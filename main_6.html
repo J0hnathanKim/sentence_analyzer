@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>랜덤 지문 출력기 (문장성분 표시 선택)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, sans-serif; line-height: 1.7; padding: 24px; }
+    h1 { margin-bottom: 12px; }
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    button {
+      padding: 10px 16px; border: 0; border-radius: 10px; cursor: pointer;
+      background: #0ea5e9; color: #fff; font-size: 1rem;
+    }
+    button.secondary { background: #64748b; }
+    button:hover { filter: brightness(0.95); }
+
+    #output {
+      padding: 16px; border-radius: 12px; background: #f8fafc; font-size: 1.15rem;
+      min-height: 80px;
+    }
+    .para { display: flex; flex-direction: column; gap: 10px; }
+    .sent { display: inline; } /* 문장들이 자연스럽게 줄바꿈됨 */
+
+    /* 토큰 공통(도형 토글용) */
+    .token { --pad: 8px; position: relative; display: inline-block; padding: var(--pad) 12px; }
+    .token .label { position: relative; z-index: 1; }
+    .token .shape {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      z-index: 0; pointer-events: none; fill: none; stroke-width: 2px; display: none;
+    }
+    .show-shapes .shape { display: block; }
+
+    /* 색상 */
+    .subject .shape { stroke: #f97316; } /* 삼각형 */
+    .object  .shape { stroke: #22c55e; } /* 원 */
+    .verb    .shape { stroke: #3b82f6; } /* 네모 */
+    .verb rect { rx: 6; ry: 6; }
+
+    /* 표시 없는 일반 텍스트 */
+    .plain { display: inline; padding: 0 0.1em; }
+  </style>
+</head>
+<body>
+  <h1>랜덤 지문 출력기</h1>
+
+  <div class="controls">
+    <button id="btnPick">지문 랜덤 출력</button>
+    <button id="btnToggle" class="secondary">표시 보이기</button>
+  </div>
+
+  <div id="output">버튼을 눌러 지문을 출력하세요.</div>
+
+  <script>
+    // ===== 데이터 구조 =====
+    // passage: 여러 문장 배열
+    // sentence: { parts: [ { role: 'sub'|'obj'|'verb'|'text', text: '...' }, ... ] }
+    const passages = [
+      // 지문 1 (문장 3개)
+      [
+        { parts: [
+          { role: 'sub',  text: '나는' }, { role: 'obj', text: '아침을' }, { role: 'verb', text: '먹는다' }, { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'sub',  text: '친구는' }, { role: 'obj', text: '자전거를' }, { role: 'verb', text: '탄다' }, { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'sub',  text: '우리는' }, { role: 'obj', text: '학교에' }, { role: 'verb', text: '간다' }, { role: 'text', text: '.' }
+        ]}
+      ],
+      // 지문 2 (문장 4개 — 줄 수 제한 없음)
+      [
+        { parts: [
+          { role: 'sub',  text: '고양이는' }, { role: 'obj', text: '햇살을' }, { role: 'verb', text: '쬔다' }, { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'sub', text: '너는' }, { role: 'obj', text: '문제를' }, { role: 'verb', text: '푼다' }, { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'text', text: '그리고' }, { role: 'obj', text: '정답을' }, { role: 'verb', text: '확인한다' }, { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'text', text: '오늘은' }, { role: 'obj', text: '도서관에서' }, { role: 'verb', text: '공부한다' }, { role: 'text', text: '.' }
+        ]}
+      ],
+      // 지문 3 (문장 2개)
+      [
+        { parts: [
+          { role: 'sub', text: '연구팀은' }, { role: 'obj', text: '데이터를' }, { role: 'verb', text: '수집했다' }, { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'sub', text: '분석가는' }, { role: 'obj', text: '결과를' }, { role: 'verb', text: '정리했다' }, { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'text', text: '분석가는' }, { role: 'obj', text: '결과를' }, { role: 'verb', text: '정리했다' }, { role: 'text', text: '.' }
+        ]}
+      ]
+    ];
+
+    const out = document.getElementById("output");
+    const btnPick = document.getElementById("btnPick");
+    const btnToggle = document.getElementById("btnToggle");
+
+    let showShapes = false;
+    let currentPassage = null;
+
+    // ===== 도형 토큰 생성 (sub/obj/verb만 그림) =====
+    function createShapedToken(kind, text) {
+      const token = document.createElement("span");
+      token.className = `token ${kind}`;
+
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = text;
+      token.appendChild(label);
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.classList.add("shape");
+      token.appendChild(svg);
+
+      requestAnimationFrame(() => {
+        const pad = parseFloat(getComputedStyle(token).getPropertyValue('--pad')) || 8;
+        const w = label.offsetWidth + pad * 2;
+        const h = label.offsetHeight + pad * 2;
+        svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+        svg.setAttribute("width", w);
+        svg.setAttribute("height", h);
+        svg.innerHTML = "";
+
+        if (kind === "subject") { // 삼각형
+          const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          poly.setAttribute("points", `${w/2},0 0,${h} ${w},${h}`);
+          svg.appendChild(poly);
+        } else if (kind === "object") { // 원(타원)
+          const e = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+          e.setAttribute("cx", w/2); e.setAttribute("cy", h/2);
+          e.setAttribute("rx", Math.max(6, w/2 - 2)); e.setAttribute("ry", Math.max(6, h/2 - 2));
+          svg.appendChild(e);
+        } else if (kind === "verb") { // 사각형
+          const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          r.setAttribute("x", 1); r.setAttribute("y", 1);
+          r.setAttribute("width", Math.max(2, w - 2)); r.setAttribute("height", Math.max(2, h - 2));
+          r.setAttribute("rx", 6); r.setAttribute("ry", 6);
+          svg.appendChild(r);
+        }
+      });
+
+      return token;
+    }
+
+    // ===== 파트 렌더링: 표시 토글에 따라 처리 =====
+    function renderPart({ role, text }) {
+      if (showShapes && (role === 'sub' || role === 'obj' || role === 'verb')) {
+        const cls = role === 'sub' ? 'subject' : role === 'obj' ? 'object' : 'verb';
+        return createShapedToken(cls, text);
+      }
+      const span = document.createElement('span');
+      span.className = 'plain';
+      span.textContent = text;
+      return span;
+    }
+
+    // ===== 지문 렌더링 =====
+    function renderPassage() {
+      out.textContent = "";
+      if (!currentPassage) {
+        out.textContent = "먼저 '지문 랜덤 출력'을 눌러주세요.";
+        return;
+      }
+      out.classList.toggle("show-shapes", showShapes);
+
+      const para = document.createElement("div");
+      para.className = "para";
+
+      currentPassage.forEach(sentence => {
+        const line = document.createElement("div");
+        line.className = "sent";
+
+        sentence.parts.forEach(part => {
+          line.appendChild(renderPart(part));
+          // 띄어쓰기 처리: 문장부호 앞에는 공백 없음
+          if (part.role !== 'text' || !/[.,!?]/.test(part.text)) {
+            line.appendChild(document.createTextNode(' '));
+          }
+        });
+
+        para.appendChild(line);
+      });
+
+      out.appendChild(para);
+    }
+
+    // ===== 이벤트 =====
+    btnPick.addEventListener("click", () => {
+      currentPassage = passages[Math.floor(Math.random() * passages.length)];
+      renderPassage();
+    });
+
+    btnToggle.addEventListener("click", () => {
+      showShapes = !showShapes;
+      btnToggle.textContent = showShapes ? "표시 숨기기" : "표시 보이기";
+      renderPassage();
+    });
+
+    // 초기
+    renderPassage();
+  </script>
+</body>
+</html>
