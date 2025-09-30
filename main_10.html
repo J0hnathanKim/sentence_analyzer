@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>랜덤 지문 출력기 (문장성분 표시 선택)</title>
+  <title>STUDYSYNC</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     body { font-family: system-ui, sans-serif; line-height: 1.7; padding: 24px; }
@@ -15,23 +15,29 @@
     button.secondary { background: #64748b; }
     button:hover { filter: brightness(0.95); }
 
+    /* 데스크톱 기본: 기존 배치 유지(왼쪽 120px, 오른쪽 32px) */
     #output {
       padding: 16px; border-radius: 12px; background: #f8fafc; font-size: 1.15rem;
       min-height: 80px;
 
-      margin-left: 120px;
-      width: calc(100% - 32px);
+      margin-left: 120px;          /* 왼쪽 여백 */
+      margin-right: 32px;          /* 오른쪽 여백 */
+      width: calc(100% - 152px);   /* 전체 - (120 + 32) */
+      box-sizing: border-box;
+      word-break: keep-all;
+      overflow-wrap: anywhere;     /* 긴 단어/토큰 줄바꿈 안전장치 */
     }
     .para { display: flex; flex-direction: column; gap: 10px; }
     .sent { display: inline; }
 
     /* 토큰 공통(도형 토글용) */
-    .token { 
-      --pad: 8px; 
-      position: relative; 
-      display: inline-block; 
+    .token {
+      --pad: 8px;
+      position: relative;
+      display: inline-block;
       padding: var(--pad) 12px;
       cursor: help;
+      outline: none;               /* 포커스 링은 브라우저 기본 유지하거나 필요시 커스텀 */
     }
     .token .label { position: relative; z-index: 1; }
     .token .shape {
@@ -80,10 +86,43 @@
       visibility: visible;
       opacity: 1;
     }
+
+    /* ── 모바일 최적화 ───────────────────────────────────────── */
+    @media (max-width: 768px) {
+      body { padding: 16px; }
+
+      /* 버튼을 세로 배치 + 터치에 맞게 넓게 */
+      .controls { flex-direction: column; }
+      .controls button { width: 100%; }
+
+      /* 출력 박스: 좌우 여백 제거하고 화면에 맞게 */
+      #output {
+        margin: 0;                 /* 좌우 여백 제거 */
+        width: 100%;               /* 화면 가득 */
+        font-size: 1rem;           /* 살짝 줄인 글씨 */
+        padding: 14px;             /* 패딩도 살짝 줄임 */
+      }
+
+      /* 토큰 패딩 줄여서 줄바꿈 덜 깨지게 */
+      .token { --pad: 6px; padding: var(--pad) 10px; }
+
+      /* 모바일에서 툴팁: 호버 대신 탭/포커스로 보이게 (터치 클래스 사용) */
+      .touch .token .tooltip {
+        bottom: auto;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      .touch .token:focus .tooltip,
+      .touch .token:active .tooltip {
+        visibility: visible;
+        opacity: 1;
+      }
+    }
   </style>
 </head>
 <body>
-  <h1>랜덤 지문 출력기</h1>
+  <h1>Studysync</h1>
 
   <div class="controls">
     <button id="btnPick">지문 랜덤 출력</button>
@@ -93,6 +132,11 @@
   <div id="output">버튼을 눌러 지문을 출력하세요.</div>
 
   <script>
+    // 모바일(터치) 환경이면 .touch 클래스를 html에 부여
+    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+      document.documentElement.classList.add('touch');
+    }
+
     // ===== 데이터 구조 =====
     // tooltip 속성을 추가하여 각 단어마다 개별 설명 가능
     const passages = [
@@ -265,6 +309,7 @@
     function createShapedToken(kind, text, customTooltip) {
       const token = document.createElement("span");
       token.className = `token ${kind}`;
+      token.tabIndex = 0; // 모바일/키보드 포커스 가능하도록
 
       const label = document.createElement("span");
       label.className = "label";
