@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>랜덤 지문 출력기 (문장성분 표시 선택)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, sans-serif; line-height: 1.7; padding: 24px; }
+    h1 { margin-bottom: 12px; }
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    button {
+      padding: 10px 16px; border: 0; border-radius: 10px; cursor: pointer;
+      background: #0ea5e9; color: #fff; font-size: 1rem;
+    }
+    button.secondary { background: #64748b; }
+    button:hover { filter: brightness(0.95); }
+
+    #output {
+      padding: 16px; border-radius: 12px; background: #f8fafc; font-size: 1.15rem;
+      min-height: 80px;
+    }
+    .para { display: flex; flex-direction: column; gap: 10px; }
+    .sent { display: inline; }
+
+    /* 토큰 공통(도형 토글용) */
+    .token { 
+      --pad: 8px; 
+      position: relative; 
+      display: inline-block; 
+      padding: var(--pad) 12px;
+      cursor: help;
+    }
+    .token .label { position: relative; z-index: 1; }
+    .token .shape {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      z-index: 0; pointer-events: none; fill: none; stroke-width: 2px; display: none;
+    }
+    .show-shapes .shape { display: block; }
+
+    /* 색상 */
+    .subject .shape { stroke: #f97316; }
+    .object  .shape { stroke: #22c55e; }
+    .verb    .shape { stroke: #3b82f6; }
+    .verb rect { rx: 6; ry: 6; }
+
+    /* 표시 없는 일반 텍스트 */
+    .plain { display: inline; padding: 0 0.1em; }
+
+    /* 툴팁 스타일 */
+    .token .tooltip {
+      visibility: hidden;
+      position: absolute;
+      bottom: 125%;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #1e293b;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      white-space: nowrap;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .token .tooltip::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: #1e293b;
+    }
+    .show-shapes .token:hover .tooltip {
+      visibility: visible;
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <h1>랜덤 지문 출력기</h1>
+
+  <div class="controls">
+    <button id="btnPick">지문 랜덤 출력</button>
+    <button id="btnToggle" class="secondary">표시 보이기</button>
+  </div>
+
+  <div id="output">버튼을 눌러 지문을 출력하세요.</div>
+
+  <script>
+    // ===== 데이터 구조 =====
+    // tooltip 속성을 추가하여 각 단어마다 개별 설명 가능
+    const passages = [
+      // 지문 1 (문장 3개)
+      [
+        { parts: [
+          { role: 'sub',  text: '나는', tooltip: '주어: 말하는 사람 자신을 가리킴' }, 
+          { role: 'obj', text: '아침을', tooltip: '목적어: 먹는 대상인 식사' }, 
+          { role: 'verb', text: '먹는다', tooltip: '서술어: 음식을 섭취하는 행위' }, 
+          { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'sub',  text: '친구는', tooltip: '주어: 행동을 하는 사람' }, 
+          { role: 'obj', text: '자전거를', tooltip: '목적어: 타는 대상인 탈것' }, 
+          { role: 'verb', text: '탄다', tooltip: '서술어: 탈것에 올라타는 동작' }, 
+          { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'sub',  text: '우리는', tooltip: '주어: 여러 사람을 포함하는 복수 주어' }, 
+          { role: 'obj', text: '학교에', tooltip: '목적어: 가는 목적지' }, 
+          { role: 'verb', text: '간다', tooltip: '서술어: 이동하는 행위' }, 
+          { role: 'text', text: '.' }
+        ]}
+      ],
+      // 지문 2 (문장 4개)
+      [
+        { parts: [
+          { role: 'sub',  text: '고양이는', tooltip: '주어: 동물 이름' }, 
+          { role: 'obj', text: '햇살을', tooltip: '목적어: 쬐는 대상' }, 
+          { role: 'verb', text: '쬔다', tooltip: '서술어: 빛을 받는 행위' }, 
+          { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'sub', text: '너는', tooltip: '주어: 듣는 사람을 가리킴' }, 
+          { role: 'obj', text: '문제를', tooltip: '목적어: 풀어야 할 과제' }, 
+          { role: 'verb', text: '푼다', tooltip: '서술어: 해답을 찾는 행위' }, 
+          { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'text', text: '그리고' }, 
+          { role: 'obj', text: '정답을', tooltip: '목적어: 확인할 대상' }, 
+          { role: 'verb', text: '확인한다', tooltip: '서술어: 맞는지 살펴보는 행위' }, 
+          { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'text', text: '오늘은' }, 
+          { role: 'obj', text: '도서관에서', tooltip: '목적어: 공부하는 장소' }, 
+          { role: 'verb', text: '공부한다', tooltip: '서술어: 학습하는 행위' }, 
+          { role: 'text', text: '.' }
+        ]}
+      ],
+      // 지문 3 (문장 3개)
+      [
+        { parts: [
+          { role: 'sub', text: '연구팀은', tooltip: '주어: 연구를 수행하는 집단' }, 
+          { role: 'obj', text: '데이터를', tooltip: '목적어: 수집하는 대상인 자료' }, 
+          { role: 'verb', text: '수집했다', tooltip: '서술어: 모으는 행위 (과거형)' }, 
+          { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'sub', text: '분석가는', tooltip: '주어: 분석 업무를 하는 사람' }, 
+          { role: 'obj', text: '결과를', tooltip: '목적어: 정리할 대상' }, 
+          { role: 'verb', text: '정리했다', tooltip: '서술어: 체계적으로 배열하는 행위 (과거형)' }, 
+          { role: 'text', text: '.' }
+        ]},
+        { parts: [
+          { role: 'text', text: '분석가는' }, 
+          { role: 'obj', text: '결과를' }, 
+          { role: 'verb', text: '정리했다' }, 
+          { role: 'text', text: '.' }
+        ]}
+      ]
+    ];
+
+    const out = document.getElementById("output");
+    const btnPick = document.getElementById("btnPick");
+    const btnToggle = document.getElementById("btnToggle");
+
+    let showShapes = false;
+    let currentPassage = null;
+
+    // ===== 도형 토큰 생성 (sub/obj/verb만 그림) =====
+    function createShapedToken(kind, text, customTooltip) {
+      const token = document.createElement("span");
+      token.className = `token ${kind}`;
+
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = text;
+      token.appendChild(label);
+
+      // 툴팁 추가 - 커스텀 툴팁이 있으면 사용, 없으면 기본값
+      const tooltip = document.createElement("span");
+      tooltip.className = "tooltip";
+      if (customTooltip) {
+        tooltip.textContent = customTooltip;
+      } else {
+        // 기본 툴팁
+        if (kind === "subject") {
+          tooltip.textContent = "주어: 동작이나 상태의 주체";
+        } else if (kind === "object") {
+          tooltip.textContent = "목적어: 동작의 대상";
+        } else if (kind === "verb") {
+          tooltip.textContent = "서술어: 동작이나 상태를 나타냄";
+        }
+      }
+      token.appendChild(tooltip);
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.classList.add("shape");
+      token.appendChild(svg);
+
+      requestAnimationFrame(() => {
+        const pad = parseFloat(getComputedStyle(token).getPropertyValue('--pad')) || 8;
+        const w = label.offsetWidth + pad * 2;
+        const h = label.offsetHeight + pad * 2;
+        svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+        svg.setAttribute("width", w);
+        svg.setAttribute("height", h);
+        svg.innerHTML = "";
+
+        if (kind === "subject") {
+          const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          poly.setAttribute("points", `${w/2},0 0,${h} ${w},${h}`);
+          svg.appendChild(poly);
+        } else if (kind === "object") {
+          const e = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+          e.setAttribute("cx", w/2); e.setAttribute("cy", h/2);
+          e.setAttribute("rx", Math.max(6, w/2 - 2)); e.setAttribute("ry", Math.max(6, h/2 - 2));
+          svg.appendChild(e);
+        } else if (kind === "verb") {
+          const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          r.setAttribute("x", 1); r.setAttribute("y", 1);
+          r.setAttribute("width", Math.max(2, w - 2)); r.setAttribute("height", Math.max(2, h - 2));
+          r.setAttribute("rx", 6); r.setAttribute("ry", 6);
+          svg.appendChild(r);
+        }
+      });
+
+      return token;
+    }
+
+    // ===== 파트 렌더링 =====
+    function renderPart({ role, text, tooltip }) {
+      if (showShapes && (role === 'sub' || role === 'obj' || role === 'verb')) {
+        const cls = role === 'sub' ? 'subject' : role === 'obj' ? 'object' : 'verb';
+        return createShapedToken(cls, text, tooltip);
+      }
+      const span = document.createElement('span');
+      span.className = 'plain';
+      span.textContent = text;
+      return span;
+    }
+
+    // ===== 지문 렌더링 =====
+    function renderPassage() {
+      out.textContent = "";
+      if (!currentPassage) {
+        out.textContent = "먼저 '지문 랜덤 출력'을 눌러주세요.";
+        return;
+      }
+      out.classList.toggle("show-shapes", showShapes);
+
+      const para = document.createElement("div");
+      para.className = "para";
+
+      currentPassage.forEach(sentence => {
+        const line = document.createElement("div");
+        line.className = "sent";
+
+        sentence.parts.forEach(part => {
+          line.appendChild(renderPart(part));
+          if (part.role !== 'text' || !/[.,!?]/.test(part.text)) {
+            line.appendChild(document.createTextNode(' '));
+          }
+        });
+
+        para.appendChild(line);
+      });
+
+      out.appendChild(para);
+    }
+
+    // ===== 이벤트 =====
+    btnPick.addEventListener("click", () => {
+      currentPassage = passages[Math.floor(Math.random() * passages.length)];
+      renderPassage();
+    });
+
+    btnToggle.addEventListener("click", () => {
+      showShapes = !showShapes;
+      btnToggle.textContent = showShapes ? "표시 숨기기" : "표시 보이기";
+      renderPassage();
+    });
+
+    // 초기
+    renderPassage();
+  </script>
+</body>
+</html>
