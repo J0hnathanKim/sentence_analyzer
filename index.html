@@ -2,18 +2,12 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>sentence</title>
+  <title>STUDYSYNC</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     body { font-family: system-ui, sans-serif; line-height: 1.7; padding: 24px; }
     h1 { margin-bottom: 12px; }
-    .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-    button {
-      padding: 10px 16px; border: 0; border-radius: 10px; cursor: pointer;
-      background: #0ea5e9; color: #fff; font-size: 1rem;
-    }
-    button.secondary { background: #64748b; }
-    button:hover { filter: brightness(0.95); }
+    .controls { display: none; } /* 버튼 영역 제거 */
 
     /* 데스크톱 기본: 기존 배치 유지(왼쪽 120px, 오른쪽 32px) */
     #output {
@@ -25,26 +19,24 @@
       width: calc(100% - 152px);   /* 전체 - (120 + 32) */
       box-sizing: border-box;
       word-break: keep-all;
-      overflow-wrap: anywhere;     /* 긴 단어/토큰 줄바꿈 안전장치 */
+      overflow-wrap: anywhere;
     }
     .para { display: flex; flex-direction: column; gap: 10px; }
     .sent { display: inline; }
 
-    /* 토큰 공통(도형 토글용) */
+    /* 토큰 공통(도형 항상 표시) */
     .token {
       --pad: 8px;
       position: relative;
       display: inline-block;
       padding: var(--pad) 12px;
-      cursor: help;
       outline: none;
     }
     .token .label { position: relative; z-index: 1; }
     .token .shape {
       position: absolute; inset: 0; width: 100%; height: 100%;
-      z-index: 0; pointer-events: none; fill: none; stroke-width: 2px; display: none;
+      z-index: 0; pointer-events: none; fill: none; stroke-width: 2px; display: block; /* 항상 표시 */
     }
-    .show-shapes .shape { display: block; }
 
     /* 색상 */
     .subject .shape { stroke: #f97316; }
@@ -52,173 +44,98 @@
     .verb    .shape { stroke: #3b82f6; }
     .verb rect { rx: 6; ry: 6; }
 
-    /* 표시 없는 일반 텍스트 */
+    /* 일반 텍스트 */
     .plain { display: inline; padding: 0 0.1em; }
-
-    /* 툴팁 스타일 */
-    .token .tooltip {
-      visibility: hidden;
-      position: absolute;
-      bottom: 125%;
-      left: 50%;
-      transform: translateX(-50%);
-      background-color: #1e293b;
-      color: #fff;
-      padding: 8px 12px;
-      border-radius: 8px;
-      font-size: 0.875rem;
-      white-space: nowrap;
-      z-index: 10;
-      opacity: 0;
-      transition: opacity 0.2s;
-      pointer-events: none;
-    }
-    .token .tooltip::after {
-      content: "";
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      border: 6px solid transparent;
-      border-top-color: #1e293b;
-    }
-    .show-shapes .token:hover .tooltip {
-      visibility: visible;
-      opacity: 1;
-    }
 
     /* ── 모바일 최적화 ───────────────────────────────────────── */
     @media (max-width: 768px) {
       body { padding: 16px; }
 
-      /* 버튼을 세로 배치 + 터치에 맞게 넓게 */
-      .controls { flex-direction: column; }
-      .controls button { width: 100%; }
-
-      /* 출력 박스: 좌우 여백 제거하고 화면에 맞게 */
       #output {
         margin: 0;
         width: 100%;
         font-size: 1rem;
         padding: 14px;
       }
-
-      /* 토큰 패딩 줄여서 줄바꿈 덜 깨지게 */
       .token { --pad: 6px; padding: var(--pad) 10px; }
-
-      /* 모바일에서 툴팁: 호버 대신 탭/포커스로 보이게 (터치 클래스 사용) */
-      .touch .token .tooltip {
-        bottom: auto;
-        top: 100%;
-        left: 50%;
-        transform: translateX(-50%);
-      }
-      .touch .token:focus .tooltip,
-      .touch .token:active .tooltip {
-        visibility: visible;
-        opacity: 1;
-      }
     }
   </style>
 </head>
 <body>
-  <h1>Sentence</h1>
+  <h1>Studysync</h1>
 
-  <div class="controls">
-    <!-- 지문 랜덤 출력 버튼 제거 -->
-    <button id="btnToggle" class="secondary">표시 보이기</button>
-  </div>
+  <!-- 버튼 영역 삭제 -->
+  <div class="controls"></div>
 
-  <div id="output">아래 버튼으로 표시(도형/툴팁)를 켜고 끌 수 있어요.</div>
+  <div id="output"></div>
 
   <script>
-    // 모바일(터치) 환경이면 .touch 클래스를 html에 부여
-    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-      document.documentElement.classList.add('touch');
-    }
-
-    // ===== 단일 지문 (경제 지문) =====
+    // 단일 지문 (경제 지문)
     const passage = [
       { parts: [
-        { role: 'sub', text: '시장경제에서', tooltip: '주어: 수요와 공급 원리로 작동하는 경제 체제' },
-        { role: 'sub', text: '가격은', tooltip: '주어: 재화나 서비스의 교환 가치' },
-        { role: 'obj', text: '자원 배분의 핵심 기능을', tooltip: '목적어: 희소한 자원을 효율적으로 분배하는 중요한 역할' },
-        { role: 'verb', text: '수행한다', tooltip: '서술어: 특정한 기능이나 역할을 실행하는 행위' },
+        { role: 'sub', text: '시장경제에서' },
+        { role: 'sub', text: '가격은' },
+        { role: 'obj', text: '자원 배분의 핵심 기능을' },
+        { role: 'verb', text: '수행한다' },
         { role: 'text', text: '.' }
       ]},
       { parts: [
-        { role: 'sub', text: '수요와 공급의 원리는', tooltip: '주어: 경제학의 가장 기본적인 메커니즘' },
-        { role: 'obj', text: '시장 가격의 결정 과정을', tooltip: '목적어: 가격이 어떻게 형성되는지에 대한 과정' },
-        { role: 'verb', text: '설명한다', tooltip: '서술어: 어떤 현상이나 개념을 이해할 수 있게 풀어내는 행위' },
+        { role: 'sub', text: '수요와 공급의 원리는' },
+        { role: 'obj', text: '시장 가격의 결정 과정을' },
+        { role: 'verb', text: '설명한다' },
         { role: 'text', text: '.' }
       ]},
       { parts: [
         { role: 'text', text: '일반적으로' },
-        { role: 'sub', text: '수요가', tooltip: '주어: 소비자가 특정 가격에서 구매하고자 하는 수량' },
-        { role: 'verb', text: '증가하면', tooltip: '서술어: 양이나 정도가 많아지는 조건' },
-        { role: 'sub', text: '가격은', tooltip: '주어: 재화의 교환 비율' },
-        { role: 'verb', text: '상승하고', tooltip: '서술어: 수치나 수준이 높아지는 현상' },
+        { role: 'sub', text: '수요가' },
+        { role: 'verb', text: '증가하면' },
+        { role: 'sub', text: '가격은' },
+        { role: 'verb', text: '상승하고' },
         { role: 'text', text: ',' },
-        { role: 'sub', text: '공급이', tooltip: '주어: 생산자가 특정 가격에서 판매하고자 하는 수량' },
-        { role: 'verb', text: '증가하면', tooltip: '서술어: 양이 늘어나는 상황' },
-        { role: 'sub', text: '가격은', tooltip: '주어: 시장에서 형성되는 교환 가치' },
-        { role: 'verb', text: '하락한다', tooltip: '서술어: 수치나 가치가 낮아지는 현상' },
+        { role: 'sub', text: '공급이' },
+        { role: 'verb', text: '증가하면' },
+        { role: 'sub', text: '가격은' },
+        { role: 'verb', text: '하락한다' },
         { role: 'text', text: '.' }
       ]},
       { parts: [
         { role: 'text', text: '이러한' },
-        { role: 'sub', text: '가격 메커니즘은', tooltip: '주어: 시장에서 가격이 조정되는 자동적 체계' },
-        { role: 'obj', text: '시장의 효율성을', tooltip: '목적어: 자원이 낭비 없이 최적으로 배분되는 정도' },
-        { role: 'verb', text: '보장하는', tooltip: '서술어: 어떤 것이 확실히 이루어지도록 하는 행위' },
-        { role: 'obj', text: '중요한 역할을', tooltip: '목적어: 핵심적이고 본질적인 기능' },
-        { role: 'verb', text: '담당한다', tooltip: '서술어: 특정한 임무나 책임을 맡아서 수행하는 행위' },
+        { role: 'sub', text: '가격 메커니즘은' },
+        { role: 'obj', text: '시장의 효율성을' },
+        { role: 'verb', text: '보장하는' },
+        { role: 'obj', text: '중요한 역할을' },
+        { role: 'verb', text: '담당한다' },
         { role: 'text', text: '.' }
       ]},
       { parts: [
         { role: 'text', text: '그러나' },
-        { role: 'sub', text: '시장 실패가', tooltip: '주어: 시장 메커니즘이 제대로 작동하지 못하는 상황' },
-        { role: 'verb', text: '발생하면', tooltip: '서술어: 어떤 사건이나 현상이 일어나는 조건' },
-        { role: 'sub', text: '정부의 개입이', tooltip: '주어: 국가가 경제 활동에 관여하는 행위' },
-        { role: 'verb', text: '필요하다', tooltip: '서술어: 어떤 것이 꼭 있어야 하거나 요구되는 상태' },
+        { role: 'sub', text: '시장 실패가' },
+        { role: 'verb', text: '발생하면' },
+        { role: 'sub', text: '정부의 개입이' },
+        { role: 'verb', text: '필요하다' },
         { role: 'text', text: '.' }
       ]},
       { parts: [
-        { role: 'sub', text: '외부효과나', tooltip: '주어: 시장 거래가 제3자에게 미치는 의도하지 않은 영향' },
-        { role: 'sub', text: '공공재의 존재는', tooltip: '주어: 비배제성과 비경합성을 가진 재화' },
-        { role: 'obj', text: '시장 실패의 대표적 사례를', tooltip: '목적어: 시장이 비효율적으로 작동하는 전형적인 경우' },
-        { role: 'verb', text: '보여준다', tooltip: '서술어: 구체적인 예시로 증명하거나 드러내는 행위' },
+        { role: 'sub', text: '외부효과나' },
+        { role: 'sub', text: '공공재의 존재는' },
+        { role: 'obj', text: '시장 실패의 대표적 사례를' },
+        { role: 'verb', text: '보여준다' },
         { role: 'text', text: '.' }
       ]}
     ];
 
     const out = document.getElementById("output");
-    const btnToggle = document.getElementById("btnToggle");
 
-    let showShapes = false;
-    const currentPassage = passage; // 단일 지문 고정
-
-    // ===== 도형 토큰 생성 (sub/obj/verb만 그림) =====
-    function createShapedToken(kind, text, customTooltip) {
+    // 도형 토큰 생성 (툴팁 제거)
+    function createShapedToken(kind, text) {
       const token = document.createElement("span");
       token.className = `token ${kind}`;
-      token.tabIndex = 0;
+      token.tabIndex = -1;
 
       const label = document.createElement("span");
       label.className = "label";
       label.textContent = text;
       token.appendChild(label);
-
-      // 툴팁
-      const tooltip = document.createElement("span");
-      tooltip.className = "tooltip";
-      if (customTooltip) {
-        tooltip.textContent = customTooltip;
-      } else {
-        if (kind === "subject") tooltip.textContent = "주어: 동작이나 상태의 주체";
-        else if (kind === "object") tooltip.textContent = "목적어: 동작의 대상";
-        else if (kind === "verb") tooltip.textContent = "서술어: 동작이나 상태를 나타냄";
-      }
-      token.appendChild(tooltip);
 
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.classList.add("shape");
@@ -254,11 +171,10 @@
       return token;
     }
 
-    // ===== 파트 렌더링 =====
-    function renderPart({ role, text, tooltip }) {
-      if (showShapes && (role === 'sub' || role === 'obj' || role === 'verb')) {
+    function renderPart({ role, text }) {
+      if (role === 'sub' || role === 'obj' || role === 'verb') {
         const cls = role === 'sub' ? 'subject' : role === 'obj' ? 'object' : 'verb';
-        return createShapedToken(cls, text, tooltip);
+        return createShapedToken(cls, text);
       }
       const span = document.createElement('span');
       span.className = 'plain';
@@ -266,15 +182,12 @@
       return span;
     }
 
-    // ===== 지문 렌더링 =====
     function renderPassage() {
       out.textContent = "";
-      out.classList.toggle("show-shapes", showShapes);
-
       const para = document.createElement("div");
       para.className = "para";
 
-      currentPassage.forEach(sentence => {
+      passage.forEach(sentence => {
         const line = document.createElement("div");
         line.className = "sent";
 
@@ -291,14 +204,7 @@
       out.appendChild(para);
     }
 
-    // ===== 이벤트 =====
-    btnToggle.addEventListener("click", () => {
-      showShapes = !showShapes;
-      btnToggle.textContent = showShapes ? "표시 숨기기" : "표시 보이기";
-      renderPassage();
-    });
-
-    // 초기 렌더(단일 지문 즉시 표시)
+    // 초기 렌더: 도형이 항상 보이도록
     renderPassage();
   </script>
 </body>
